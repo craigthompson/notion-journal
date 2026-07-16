@@ -7,7 +7,7 @@ A Claude Code skill that logs your daily engineering work to a structured Notion
 Clone this repo into your Claude Code skills directory:
 
 ```bash
-git clone <repo-url> ~/.claude/skills/notion-journal
+git clone https://github.com/craigthompson/notion-journal.git ~/.claude/skills/notion-journal
 ```
 
 Make the script executable:
