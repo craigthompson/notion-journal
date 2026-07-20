@@ -2,7 +2,7 @@
 # notion-journal.sh — Append entries to the Engineering Journal database in Notion
 #
 # Usage:
-#   notion-journal.sh <section> <entry> [--time HH:MM AM/PM] [--tags tag1,tag2]
+#   notion-journal.sh <section> <entry> [--time HH:MM AM/PM] [--tags tag1,tag2] [--sub "sub-bullet text"]...
 #
 # Sections: worked, decision, learned, blocker
 #
@@ -11,6 +11,11 @@
 #   notion-journal.sh decision "Chose Redis over Memcached — need pub/sub" --tags decision
 #   notion-journal.sh learned "Shopify webhooks have a 5s timeout"
 #   notion-journal.sh blocker "Waiting on DevOps for staging Redis cluster"
+#   notion-journal.sh worked "Reviewed PR #527" --sub "Flagged naming issue" --sub "Learned about error types"
+#
+# Markdown-style links in entry text and sub-bullets are converted to clickable
+# Notion hyperlinks:
+#   notion-journal.sh worked "Fixed race condition in [PR #123](https://github.com/org/repo/pull/123)"
 
 set -euo pipefail
 
@@ -39,11 +44,13 @@ shift 2
 
 TIMESTAMP=""
 TAGS=""
+SUB_BULLETS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --time) TIMESTAMP="$2"; shift 2 ;;
     --tags) TAGS="$2"; shift 2 ;;
+    --sub)  SUB_BULLETS+=("$2"); shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -168,26 +175,85 @@ for block in data.get('results', []):
 
 append_bullet() {
   local block_id="$1" text="$2" timestamp="$3"
+  shift 3
+  local sub_bullets=("$@")
 
   local rich_text
-  if [[ -n "$timestamp" ]]; then
-    rich_text=$(ENTRY_TS="$timestamp" ENTRY_TEXT="$text" python3 -c "
-import json, os
-print(json.dumps([
-  {'type': 'text', 'text': {'content': os.environ['ENTRY_TS']}, 'annotations': {'bold': True}},
-  {'type': 'text', 'text': {'content': ' — ' + os.environ['ENTRY_TEXT']}}
-]))
+  rich_text=$(ENTRY_TS="$timestamp" ENTRY_TEXT="$text" python3 -c "
+import re, json, os
+
+def parse_links(text):
+    parts = []
+    last = 0
+    for m in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)', text):
+        if m.start() > last:
+            parts.append({'type': 'text', 'text': {'content': text[last:m.start()]}})
+        parts.append({'type': 'text', 'text': {'content': m.group(1), 'link': {'url': m.group(2)}}})
+        last = m.end()
+    if last < len(text):
+        parts.append({'type': 'text', 'text': {'content': text[last:]}})
+    return parts or [{'type': 'text', 'text': {'content': text}}]
+
+text = os.environ['ENTRY_TEXT']
+ts = os.environ.get('ENTRY_TS', '')
+rich = []
+if ts:
+    rich.append({'type': 'text', 'text': {'content': ts}, 'annotations': {'bold': True}})
+    rich.append({'type': 'text', 'text': {'content': ' — '}})
+    rich.extend(parse_links(text))
+else:
+    rich = parse_links(text)
+print(json.dumps(rich))
 ")
-  else
-    rich_text=$(ENTRY_TEXT="$text" python3 -c "
-import json, os
-print(json.dumps([
-  {'type': 'text', 'text': {'content': os.environ['ENTRY_TEXT']}}
-]))
-")
+
+  local children_json=""
+  if [[ ${#sub_bullets[@]} -gt 0 ]]; then
+    children_json=$(python3 -c "
+import json, sys, re
+
+def parse_links(text):
+    parts = []
+    last = 0
+    for m in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)', text):
+        if m.start() > last:
+            parts.append({'type': 'text', 'text': {'content': text[last:m.start()]}})
+        parts.append({'type': 'text', 'text': {'content': m.group(1), 'link': {'url': m.group(2)}}})
+        last = m.end()
+    if last < len(text):
+        parts.append({'type': 'text', 'text': {'content': text[last:]}})
+    return parts or [{'type': 'text', 'text': {'content': text}}]
+
+subs = json.loads(sys.stdin.read())
+children = []
+for s in subs:
+    children.append({
+        'type': 'bulleted_list_item',
+        'bulleted_list_item': {
+            'rich_text': parse_links(s)
+        }
+    })
+print(json.dumps(children))
+" <<< "$(printf '%s\n' "${sub_bullets[@]}" | python3 -c "import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin]))")")
   fi
 
-  notion_api PATCH "/blocks/$block_id/children" "$(cat <<ENDJSON
+  local bullet_json
+  if [[ -n "$children_json" ]]; then
+    bullet_json=$(cat <<ENDJSON
+{
+  "children": [
+    {
+      "type": "bulleted_list_item",
+      "bulleted_list_item": {
+        "rich_text": $rich_text,
+        "children": $children_json
+      }
+    }
+  ]
+}
+ENDJSON
+)
+  else
+    bullet_json=$(cat <<ENDJSON
 {
   "children": [
     {
@@ -199,7 +265,10 @@ print(json.dumps([
   ]
 }
 ENDJSON
-)" > /dev/null
+)
+  fi
+
+  notion_api PATCH "/blocks/$block_id/children" "$bullet_json" > /dev/null
 }
 
 # --- Update tags on the page if provided ---
@@ -260,8 +329,8 @@ if [[ -z "$BLOCK_ID" ]]; then
   exit 1
 fi
 
-# Append the bullet
-append_bullet "$BLOCK_ID" "$ENTRY" "$TIMESTAMP"
+# Append the bullet (with optional sub-bullets)
+append_bullet "$BLOCK_ID" "$ENTRY" "$TIMESTAMP" "${SUB_BULLETS[@]+"${SUB_BULLETS[@]}"}"
 
 # Update tags if provided
 update_tags "$PAGE_ID" "$TAGS"
