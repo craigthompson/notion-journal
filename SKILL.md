@@ -207,6 +207,14 @@ Review the full conversation history from this session. Produce a draft summary 
 
 Omit sections that have no entries. Each section can have multiple bullets if there were multiple distinct items.
 
+**Hyperlinks:** When entries reference pull requests, issues, commits, or other web resources from the session, include markdown-style links in the entry text so they render as clickable links in Notion. Use the actual URLs from the session context (e.g., `gh pr view` output, GitHub URLs mentioned by the user, issue tracker links). Examples:
+- "Fixed race condition in [PR #123](https://github.com/org/repo/pull/123)"
+- "Investigated [JIRA-456](https://jira.example.com/browse/JIRA-456) — root cause was stale cache"
+
+For GitHub PRs, construct the URL from the repo origin and PR number if not already available. Do not fabricate URLs — only link when you have the actual URL or can reliably construct it.
+
+**PR code review sessions:** When a session involved a PR code review, group items within each section under a single parent bullet for that review (e.g., "Reviewed PR #123 — summary"). If a section has multiple items related to the same review, those become sub-bullets under the parent. Present them indented in the draft summary so the user sees the nesting. Non-review work in the same session gets its own top-level bullets as normal.
+
 ### Step 2: Present Draft and Collect Response
 
 Show the summary to the user, formatted clearly with section headers and bullet points. Then use the `AskUserQuestion` tool to let them choose an action:
@@ -228,7 +236,7 @@ Show the summary to the user, formatted clearly with section headers and bullet 
 For each bullet in each non-empty section, call the journal script:
 
 ```bash
-~/.claude/skills/notion-journal/notion-journal.sh <section> "<entry text>" [--tags tag1,tag2]
+~/.claude/skills/notion-journal/notion-journal.sh <section> "<entry text>" [--tags tag1,tag2] [--sub "sub-bullet text"]...
 ```
 
 Section mapping:
@@ -238,6 +246,12 @@ Section mapping:
 - "Blockers / Follow-ups" → `blocker`
 
 For tags: include relevant project names, repo names, or ticket numbers that came up in the session (e.g., `GLOW`, `WICK`, `Refill`). If none are obvious, omit `--tags`.
+
+For entries with sub-bullets (e.g., grouped PR review items), use `--sub` for each nested item:
+
+```bash
+~/.claude/skills/notion-journal/notion-journal.sh worked "Reviewed [PR #527](https://github.com/org/repo/pull/527) — cart error handling fix" --sub "Posted inline comment with code suggestion for naming consistency" --tags WICK,review
+```
 
 ### Step 4: Confirm
 
