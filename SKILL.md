@@ -213,7 +213,12 @@ Omit sections that have no entries. Each section can have multiple bullets if th
 
 For GitHub PRs, construct the URL from the repo origin and PR number if not already available. Do not fabricate URLs — only link when you have the actual URL or can reliably construct it.
 
-**PR code review sessions:** When a session involved a PR code review, group items within each section under a single parent bullet for that review (e.g., "Reviewed PR #123 — summary"). If a section has multiple items related to the same review, those become sub-bullets under the parent. Present them indented in the draft summary so the user sees the nesting. Non-review work in the same session gets its own top-level bullets as normal.
+**Grouping related items under shared context:** When multiple bullets across different sections share a common context — a meeting, a PR code review, a pairing session, an incident, etc. — group them under a parent bullet that names that context. Items related to the same context become sub-bullets under the parent. Present them indented in the draft summary so the user sees the nesting. Unrelated work in the same session gets its own top-level bullets as normal.
+
+Examples:
+- A meeting produces entries in both "What I worked on" and "Decisions & Reasoning" → each section gets a parent bullet like "Canada Expansion Home Base meeting" with the specific items as sub-bullets.
+- A PR code review produces entries across multiple sections → each section gets a parent bullet like "Reviewed PR #123 — summary" with specific findings as sub-bullets.
+- A debugging session produces entries in "What I worked on" and "Learned" → each section gets a parent bullet like "Debugging cart race condition" with details as sub-bullets.
 
 ### Step 2: Present Draft and Collect Response
 
